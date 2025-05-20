@@ -1,0 +1,995 @@
+// ==UserScript==
+// @name         Neumorphic AdminML Menu + Diferimento + Packing Wallcar
+// @namespace    http://tampermonkey.net/
+// @version      0.9.4
+// @description  Menu neumórfico com painel de diferimento e Wallcar Packing dentro das seções, feedback no botão centralizado
+// @match        *://*.adminml.com/*
+// @grant        GM_setClipboard
+// ==/UserScript==
+
+(function() {
+  'use strict';
+
+  // --- CSS para menu, painel, packing alto relevo cinza centralizado ---
+  const css = `
+  #neumo-menu { position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column-reverse; align-items: flex-end; }
+  #neumo-toggle { width: 12px; height: 12px;
+    background: #fff; border-radius: 50%;
+    box-shadow: 2px 2px 5px #bebebe, -2px -2px 5px #fff;
+    cursor: pointer; transition: all 0.2s ease;
+    position: relative; overflow: visible; }
+  #neumo-toggle:hover, #neumo-menu.open #neumo-toggle {
+    width: 24px; height: 24px;
+  }
+  #neumo-toggle::after { display: none !important; }
+  #neumo-toggle .firefly {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff 60%, rgba(66,133,244,0.7) 100%);
+    opacity: 0 !important;
+    pointer-events: none;
+    z-index: 2;
+    animation: firefly-move 2s infinite alternate;
+    transition: opacity 0.3s;
+  }
+  #neumo-toggle:hover .firefly {
+    opacity: 1 !important;
+  }
+  #neumo-toggle .firefly.f1 { top: 38px; left: 10px; animation-delay: 0s; }
+  #neumo-toggle .firefly.f2 { top: 50px; left: 30px; animation-delay: 0.5s; }
+  #neumo-toggle .firefly.f3 { top: 45px; left: 40px; animation-delay: 1s; }
+  #neumo-toggle .firefly.f4 { top: 60px; left: 0px; animation-delay: 1.5s; }
+  @keyframes firefly-move {
+    0% { transform: scale(0.7) translateY(0); opacity: 0.7; }
+    100% { transform: scale(1.2) translateY(-8px); opacity: 1; }
+  }
+  #neumo-menu-content { display: flex; flex-direction: column-reverse;
+    align-items: flex-end; margin-bottom: 8px; pointer-events: none; }
+  #neumo-menu.open #neumo-menu-content { pointer-events: auto; }
+  #sections-container { display: flex; flex-direction: column-reverse; align-items: flex-end; }
+  .neumo-menu-item {
+    margin: 4px 0; padding: 8px 12px; background: #f0f0f3;
+    border-radius: 12px; box-shadow: 4px 4px 8px #bebebe, -4px -4px 8px #fff;
+    font-size: 14px; color: #555; cursor: pointer;
+    transition: transform 0.5s ease, opacity 0.5s ease,
+      width 0.5s ease, padding 0.5s ease, margin 0.5s ease;
+    opacity: 0; transform: translateY(20px);
+  }
+  #neumo-menu.open .neumo-menu-item:not(.fade-out) {
+    opacity: 1; transform: translateY(0);
+  }
+  #neumo-menu.open .neumo-menu-item.fade-out {
+    opacity: 0 !important; transform: translateX(50px) !important;
+    transition-delay: 0s !important;
+  }
+  .neumo-menu-item.expand {
+    width: 340px; padding: 10px; margin: 4px 0;
+    border-radius: 16px; transform-origin: top center;
+  }
+  .neumo-panel-header {
+    font-size: 16px; font-weight: bold; color: #333;
+    text-align: center; margin-bottom: 8px;
+    cursor: pointer; user-select: none;
+  }
+  .neumo-panel-body {
+    display: flex; flex-direction: column; align-items: center;
+    width: 100%;
+  }
+  .neumo-submenu-item {
+    width: 100%; padding: 6px 0; font-size: 13px;
+    color: #444; text-align: center; cursor: pointer;
+    transition: color 0.2s ease;
+  }
+  .neumo-submenu-item:hover { color: #000; }
+  .painel-diferimentos-interno, .painel-packing-interno {
+    width: 320px;
+    max-height: 55vh;
+    overflow-y: auto;
+    background-color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.11);
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    color: #333;
+    position: relative;
+  }
+  .painel-diferimentos-interno::-webkit-scrollbar,
+  .painel-packing-interno::-webkit-scrollbar {
+    width: 4px;
+    background: transparent;
+  }
+  .painel-diferimentos-interno::-webkit-scrollbar-thumb,
+  .painel-packing-interno::-webkit-scrollbar-thumb {
+    background: #d3d3d3;
+    border-radius: 2px;
+  }
+  .painel-diferimentos-interno,
+  .painel-packing-interno {
+    scrollbar-width: thin;
+    scrollbar-color: #d3d3d3 #fff;
+  }
+  .packing-btn {
+    background: #f0f0f3;
+    color: #222;
+    font-weight: bold;
+    border: none;
+    border-radius: 14px;
+    padding: 14px 0;
+    width: 95%;
+    font-size: 17px;
+    margin: 14px auto 14px auto;
+    box-shadow: 3px 3px 8px #bebebe, -3px -3px 8px #fff;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    display: block;
+    text-align: center;
+  }
+  .packing-btn:active {
+    background: #e0e0e3;
+    color: #888;
+  }
+  .painel-diferimentos-interno table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 8px;
+    font-size: 14px;
+    background: transparent;
+    margin-top: 8px;
+  }
+  .painel-diferimentos-interno thead th {
+    background: #e8eaec;
+    color: #0d2750;
+    font-weight: bold;
+    padding: 10px 0;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 2px 8px #f5f6fa;
+    letter-spacing: 1px;
+    border: none;
+  }
+  .painel-diferimentos-interno tbody tr {
+    background: #f7f8fa;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px #e8eaec, 0 1px 2px #fff inset;
+    transition: box-shadow 0.2s;
+  }
+  .painel-diferimentos-interno tbody tr:hover {
+    box-shadow: 0 4px 16px #d1d9e6, 0 2px 4px #fff inset;
+  }
+  .painel-diferimentos-interno td {
+    padding: 10px 8px;
+    text-align: center;
+    border: none;
+    color: #222;
+    background: transparent;
+    font-size: 14px;
+  }
+  .painel-diferimentos-interno td.total {
+    color: #0d2750 !important;
+    font-weight: 600;
+    background: #e8eaec;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px #f5f6fa inset;
+  }
+  .painel-diferimentos-interno td:first-child {
+    border-radius: 8px 0 0 8px;
+  }
+  .painel-diferimentos-interno td:last-child {
+    border-radius: 0 8px 8px 0;
+    text-align: left;
+    font-size: 13px;
+    color: #555;
+  }
+  .painel-diferimentos-interno .resumo {
+    background: #e8eaec;
+    border-radius: 24px;
+    text-align: center;
+    font-size: 15px;
+    font-weight: bold;
+    color: #222;
+    margin: 24px auto 24px auto;
+    padding: 16px 32px;
+    max-width: 90%;
+    box-shadow:
+      0 8px 28px 0 rgba(13, 39, 80, 0.16),
+      0 -4px 16px 0 #fff,
+      inset 0 4px 8px 0 #fff,
+      inset 0 -8px 24px 0 rgba(13, 39, 80, 0.16);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+  }
+  .painel-diferimentos-interno .resumo span {
+    color: #222;
+    font-size: 17px;
+    font-weight: bold;
+    margin-left: 10px;
+  }
+  .painel-diferimentos-interno .status-coleta {
+    padding: 5px 0;
+    margin-bottom: 5px;
+    font-size: 12px;
+    text-align: left;
+    color: #222;
+    font-weight: 500;
+  }
+  .painel-diferimentos-interno .copiar-btn {
+    background: none;
+    border: none;
+    color: #222;
+    font-size: 13px;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    text-decoration: underline;
+    transition: color 0.2s;
+    font-weight: 500;
+    box-shadow: none;
+    border-radius: 0;
+    display: none;
+  }
+  .painel-diferimentos-interno .copiar-btn.visible {
+    display: block;
+  }
+  .painel-diferimentos-interno .copiar-btn:hover {
+    color: #ffa726;
+    text-decoration: underline;
+    background: none;
+  }
+  .painel-diferimentos-interno {
+    position: relative;
+  }
+  .maximizar-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #e8eaec;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 6px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px #f5f6fa;
+    transition: background 0.2s;
+    z-index: 10;
+  }
+  .maximizar-btn:hover {
+    background: #d1d9e6;
+  }
+  .painel-diferimentos-interno.maximizado {
+    position: fixed !important;
+    top: 32px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 90vw !important;
+    max-width: 1200px !important;
+    height: 90vh !important;
+    max-height: 90vh !important;
+    z-index: 99999 !important;
+    box-shadow: 0 8px 32px #d1d9e6, 0 1px 2px #fff inset;
+    overflow: auto !important;
+    padding-bottom: 32px !important;
+  }
+  .painel-diferimentos-interno.expandido {
+    position: fixed !important;
+    top: 32px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 90vw !important;
+    max-width: 1200px !important;
+    height: 90vh !important;
+    max-height: 90vh !important;
+    z-index: 99999 !important;
+    box-shadow: 0 8px 32px #d1d9e6, 0 1px 2px #fff inset;
+    overflow: auto !important;
+    padding-bottom: 32px !important;
+  }
+  .packing-loading {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 24px 0 16px 0;
+    min-height: 80px;
+    gap: 12px;
+  }
+  .packing-spinner {
+    width: 38px;
+    height: 38px;
+    border: 5px solid #e8eaec;
+    border-top: 5px solid #0d2750;
+    border-radius: 50%;
+    animation: packing-spin 1s linear infinite;
+    margin-bottom: 8px;
+  }
+  .packing-btn .packing-spinner {
+    display: inline-block;
+    vertical-align: middle;
+    width: 18px;
+    height: 18px;
+    border: 3px solid #e8eaec;
+    border-top: 3px solid #0d2750;
+    border-radius: 50%;
+    animation: packing-spin 1s linear infinite;
+    margin-left: 10px;
+    margin-bottom: 2px;
+  }
+  @keyframes packing-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  .packing-loading-text {
+    color: #0d2750;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 1px;
+  }
+  .packing-tabela-container {
+    margin-top: 18px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+  .packing-tabela-resumo {
+    background: #e8eaec;
+    border-radius: 18px;
+    box-shadow: 0 8px 28px 0 rgba(13, 39, 80, 0.10), 0 -4px 16px 0 #fff, inset 0 4px 8px 0 #fff, inset 0 -8px 24px 0 rgba(13, 39, 80, 0.10);
+    padding: 18px 24px;
+    min-width: 220px;
+    max-width: 340px;
+    margin: 0 auto;
+  }
+  .packing-tabela-styled {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 8px;
+    font-size: 14px;
+    background: transparent;
+  }
+  .packing-tabela-styled th {
+    background: #e8eaec;
+    color: #0d2750;
+    font-weight: bold;
+    padding: 10px 0;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 2px 8px #f5f6fa;
+    letter-spacing: 1px;
+    border: none;
+  }
+  .packing-tabela-styled td {
+    padding: 10px 8px;
+    text-align: center;
+    border: none;
+    color: #222;
+    background: #f7f8fa;
+    font-size: 14px;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px #f5f6fa inset;
+  }
+  `;
+  const style = document.createElement('style'); style.textContent = css;
+  document.head.appendChild(style);
+
+  // -- Estrutura do menu, seções, toggle, etc --
+  const menu = document.createElement('div'); menu.id = 'neumo-menu';
+  const toggle = document.createElement('div'); toggle.id = 'neumo-toggle';
+  const content = document.createElement('div'); content.id = 'neumo-menu-content';
+  const sectionsWrapper = document.createElement('div'); sectionsWrapper.id = 'sections-container';
+  content.appendChild(sectionsWrapper);
+  menu.append(toggle, content);
+  document.body.appendChild(menu);
+
+  // Adiciona fireflies
+  for (let i = 1; i <= 4; i++) {
+    const firefly = document.createElement('span');
+    firefly.className = 'firefly f' + i;
+    toggle.appendChild(firefly);
+  }
+
+  const sections = ['WAVES', 'PICKING', 'PACKING', 'SHIPPING', 'DIFERIMENTO'];
+  let activeBtn = null;
+  let painelDiferimentos = null;
+  let observerDiferimento = null;
+  let painelConteudoDiferimento = null;
+  let painelCopiarBtn = null;
+  let dadosColetados = [];
+
+  sections.forEach(name => {
+    const btn = document.createElement('div');
+    btn.className = 'neumo-menu-item'; btn.textContent = name;
+    btn.dataset.name = name;
+    sectionsWrapper.appendChild(btn);
+    btn.addEventListener('click', () => {
+      if (!menu.classList.contains('open')) return;
+      if (activeBtn) closePanel();
+      openPanel(btn, name);
+    });
+  });
+
+  toggle.addEventListener('click', () => {
+    const isOpen = menu.classList.toggle('open');
+    if (!isOpen) {
+      if (activeBtn) {
+        activeBtn.classList.remove('expand');
+        activeBtn.innerHTML = activeBtn.dataset.name;
+        activeBtn = null;
+      }
+      sectionsWrapper.querySelectorAll('.neumo-menu-item').forEach(b => {
+        b.classList.remove('fade-out');
+        b.style.transitionDelay = '';
+        b.style.opacity = '';
+        b.style.transform = '';
+      });
+      if (painelDiferimentos) {
+        painelDiferimentos.remove();
+        painelDiferimentos = null;
+        if(observerDiferimento) observerDiferimento.disconnect();
+        observerDiferimento = null;
+        dadosColetados = [];
+      }
+    }
+  });
+
+  function openPanel(btn, name) {
+    activeBtn = btn;
+    sectionsWrapper.querySelectorAll('.neumo-menu-item').forEach(b => {
+      if (b !== btn) b.classList.add('fade-out');
+    });
+    btn.classList.add('expand'); btn.innerHTML = '';
+    const header = document.createElement('div');
+    header.className = 'neumo-panel-header';
+    header.textContent = name;
+    header.style.cursor = 'pointer';
+    header.addEventListener('click', function(event) {
+      event.stopPropagation();
+      closePanel();
+    });
+    const body = document.createElement('div'); body.className = 'neumo-panel-body';
+    if (name === 'DIFERIMENTO') {
+      painelDiferimentos = criarPainelDiferimentosInterno();
+      painelConteudoDiferimento = painelDiferimentos.querySelector('.conteudo-diferimentos-interno');
+      painelCopiarBtn = painelDiferimentos.querySelector('.copiar-btn');
+      body.appendChild(painelDiferimentos);
+      iniciarObservacaoDiferimento();
+    } else if (name === 'PACKING') {
+      const btn = document.createElement('button');
+      btn.innerHTML = '<span class="packing-btn-text">Raspagem PTW</span><span class="packing-spinner" style="display:none"></span>';
+      btn.className = 'packing-btn';
+      body.appendChild(btn);
+
+      btn.addEventListener('click', function () {
+        btn.disabled = true;
+        mostrarCarregando('Analisando Packing Wall...');
+        iniciarFusao();
+      });
+
+      function mostrarCarregando(texto) {
+        btn.querySelector('.packing-btn-text').textContent = texto;
+        btn.querySelector('.packing-spinner').style.display = 'inline-block';
+      }
+      function mostrarPronto(texto) {
+        btn.querySelector('.packing-btn-text').textContent = texto;
+        btn.querySelector('.packing-spinner').style.display = 'none';
+      }
+
+      async function iniciarFusao() {
+        mostrarCarregando('Coletando dados extras...');
+        const dadosExtras = await coletarDadosExtraFormatados();
+
+        mostrarCarregando('Coletando tabelas principais...');
+        const [dadosLinks, dadosBatches] = await Promise.all([coletarDadosLinks(), coletarDadosBatches()]);
+
+        mostrarCarregando('Coletando dados adicionais de movimentos...');
+        const dadosMovements = await coletarDadosMovements();
+
+        mostrarCarregando('Adicionando Batch in...');
+        const batchInColuna = await calcularBatchIn(dadosMovements);
+
+        mostrarCarregando('Coletando informações de Put Wall...');
+        const dadosPutWall = await coletarDadosPutWall();
+
+        mostrarCarregando('Formatando dados...');
+        const linhasFinais = [];
+        const maiorTamanho = Math.max(dadosLinks.length, dadosBatches.length, dadosMovements.length, dadosPutWall.length);
+        const dadosExtrasPorLinha = dividirDadosExtras(dadosExtras, maiorTamanho);
+
+        for (let i = 0; i < maiorTamanho; i++) {
+          const linhaLinks = dadosLinks[i] || ['', '', '', '', '', '', ''];
+          const linhaBatches = dadosBatches[i] || ['', '', '', '', '', '', '', '', ''];
+          const linhaMovements = dadosMovements[i] || ['', '', '', '', '', '', '', '', ''];
+          const linhaPutWall = dadosPutWall[i] || { Wallcar: '', Horario: '', REP: '' };
+          const { Wallcar, Horario, REP } = linhaPutWall;
+          const dadoExtraParaLinha = dadosExtrasPorLinha[i] || '';
+          const batchIn = batchInColuna[i] || '';
+          const linhaCompleta = [
+            ...linhaLinks,
+            ...linhaBatches,
+            ...linhaMovements,
+            dadoExtraParaLinha,
+            batchIn,
+            Wallcar,
+            Horario,
+            REP
+          ];
+          while (linhaCompleta.length < 29) linhaCompleta.push('');
+          linhasFinais.push(linhaCompleta.join('\t'));
+        }
+
+        const cabecalho = [
+          'Link', 'Status', 'Wallcar', 'Dia', 'ETD', 'Pedidos', 'PP ETD',
+          'Batch ID', 'Wave ID', 'Processo', 'Totes associados', 'ETD', 'Tempo restante de ETD',
+          'Aging do batch', 'Unidades totais', 'Status das unidades',
+          'TD', 'Processo', 'Organização', 'Código', 'Quantidade', 'Origem', 'Destino', 'Data', 'Responsável',
+          'Dados Extra', 'Batch in',
+          'Wallcar', 'Horario', 'REP'
+        ].join('\t');
+
+        const resultadoFinal = [cabecalho, ...linhasFinais].join('\n');
+        GM_setClipboard(resultadoFinal);
+        mostrarPronto('Raspagem finalizada! Dados copiados.');
+        setTimeout(() => {
+          btn.disabled = false;
+          mostrarPronto('Reinicie a página para próxima raspagem');
+        }, 5000);
+      }
+
+      function dividirDadosExtras(dadosExtras, tamanho) {
+        const resultado = Array(tamanho).fill('');
+        const mapeamento = ['Packing Wall', 'Wall In', 'Batch Sorter', 'Concluídos', 'Processando', 'Batch Total', 'Batch sem sortage'];
+        dadosExtras.forEach((dadoExtra, index) => {
+          if (index < resultado.length) {
+            resultado[index] = `${mapeamento[index % mapeamento.length]}: ${dadoExtra.split(': ')[1]}`;
+          }
+        });
+        return resultado;
+      }
+
+      function coletarDadosLinks() {
+        return new Promise((resolve) => {
+          const resultados = [];
+          const totalLinks = 300;
+          let linksProcessados = 0;
+          const baseURL = "https://wms.adminml.com/monitor/putwall/wallout?wall=003&section=";
+
+          for (let section = 1; section <= totalLinks; section++) {
+            const sectionStr = section.toString().padStart(3, '0');
+            const url = `${baseURL}${sectionStr}&row=01&column=01&origin=wall_monitor`;
+
+            fetch(url).then(response => response.text()).then(html => {
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              const emptyMessage = doc.querySelector(".empty-table__title");
+              const prefix = doc.querySelector("div.wallout__layout__layout__cell.busy") ? "N" : "K";
+              if (!emptyMessage || emptyMessage.textContent.trim() !== "Por enquanto, não há nenhum pedido pronto.") {
+                const etdElement = doc.querySelector(".etd-cell-container__etd");
+                const rows = doc.querySelectorAll("tbody.andes-table__body > tr");
+                const rowCount = rows.length.toString().padStart(2, '0');
+                const firstETD = rows[0]?.querySelector(".etd-cell-container__etd")?.textContent.trim();
+                const sameETDCount = firstETD ? Array.from(rows).filter(row => {
+                  const etd = row.querySelector(".etd-cell-container__etd")?.textContent.trim();
+                  return etd === firstETD;
+                }).length : 0;
+                if (etdElement) {
+                  const status = prefix === "K" ? "PACK" : "WALL";
+                  const wallcar = sectionStr;
+                  const [day, time] = etdElement.textContent.trim().split(" - ");
+                  resultados.push([url, status, wallcar, day, time, rowCount, sameETDCount.toString().padStart(2, '0')]);
+                }
+              }
+              linksProcessados++;
+              if (linksProcessados === totalLinks) resolve(resultados);
+            });
+          }
+        });
+      }
+
+      function coletarDadosBatches() {
+        return new Promise((resolve) => {
+          const resultados = [];
+          const baseURL = "https://wms.adminml.com/reports/batches?offset=";
+          let offset = 0;
+          const processPage = (offset) => {
+            fetch(baseURL + offset).then(response => response.text()).then(html => {
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              const table = doc.querySelector('section.table');
+              if (!table) {
+                resolve(resultados);
+                return;
+              }
+              const rows = table.querySelectorAll('tr');
+              rows.forEach((row, index) => {
+                if (index === 0) return;
+                const cells = Array.from(row.querySelectorAll('td')).map(cell => cell.innerText.trim());
+                resultados.push(cells);
+              });
+              offset += 20;
+              processPage(offset);
+            });
+          };
+          processPage(offset);
+        });
+      }
+
+      function coletarDadosMovements() {
+        return new Promise((resolve) => {
+          const resultados = [];
+          const url = "https://wms.adminml.com/reports/movements?process_name=packing&storage_id=PW&limit=1000";
+          fetch(url).then(response => response.text()).then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const rows = doc.querySelectorAll('tbody > tr');
+            rows.forEach(row => {
+              const cells = Array.from(row.querySelectorAll('td')).map(cell => cell.innerText.trim().replace(/\n/g, ' '));
+              resultados.push(cells);
+            });
+            resolve(resultados);
+          });
+        });
+      }
+
+      async function calcularBatchIn() {
+        const now = new Date();
+        const nomesValidos = new Set();
+        try {
+          const response = await fetch('https://wms.adminml.com/reports/movements?process_name=batch_sorter&limit=1000');
+          const html = await response.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const rows = doc.querySelectorAll('tbody > tr');
+          rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length < 9) return;
+            const dataCompleta = cells[7].innerText.trim().split('\n');
+            const responsavel = cells[8].innerText.trim();
+            if (dataCompleta.length === 2) {
+              const [date, time] = dataCompleta;
+              const dateTime = new Date(`${date}T${time}`);
+              if (now - dateTime <= 10 * 60 * 1000 && now - dateTime >= 0) {
+                nomesValidos.add(responsavel);
+              }
+            }
+          });
+        } catch (error) {
+          console.error("Erro ao buscar ou processar os dados:", error);
+        }
+        return Array.from(nomesValidos);
+      }
+
+      async function coletarDadosExtraFormatados() {
+        const dadosExtras = [
+          `Packing Wall: ${extrairTextoPorTitulo("Packing wall")}`,
+          `Wall In: ${extrairTextoPorTitulo("Wall in")}`,
+          `Batch Sorter: ${extrairTextoPorTitulo("Batch sorter")}`,
+          `Concluídos: ${extrairTextoPorLegenda("Concluídos")}`,
+          `Processando: ${extrairTextoPorLegenda("Em processamento")}`,
+          `Batch Total: ${extrairTextoPorTituloGlobal("Batches")}`,
+          `Batch sem sortage: ${await extrairTotalDeItens()}`
+        ];
+        return dadosExtras;
+      }
+
+      async function extrairTotalDeItens() {
+        const url = 'https://wms.adminml.com/reports/batches?unit_status=to_restock,to_pick,picked,to_group,grouping,grouped';
+        try {
+          const response = await fetch(url);
+          const html = await response.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const elemento = doc.querySelector('.reports-paging_content_label');
+          if (elemento) {
+            const texto = elemento.textContent.trim();
+            const match = texto.match(/de\s(\d+)/);
+            return match ? match[1] : '';
+          }
+        } catch (error) {
+          console.error('Erro ao extrair total de itens:', error);
+        }
+        return '';
+      }
+
+      function extrairTextoPorTitulo(titulo) {
+        const elemento = document.evaluate(
+          `//div[contains(@class, 'current-backlog__cells-item') and h3[text()='${titulo}']]//p[contains(@class, 'current-backlog__cells-title')]`,
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null
+        ).singleNodeValue;
+        return elemento ? elemento.textContent.match(/\d+/g)?.join('') : '';
+      }
+
+      function extrairTextoPorLegenda(legenda) {
+        const elemento = document.evaluate(
+          `//div[contains(@class, 'batches__cells-caption__item') and p[text()='${legenda}']]//p[contains(@class, 'batches__cells-title')]`,
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null
+        ).singleNodeValue;
+        return elemento ? elemento.textContent.match(/\d+/g)?.join('') : '';
+      }
+
+      function extrairTextoPorTituloGlobal(titulo) {
+        const elemento = document.evaluate(
+          `//div[contains(@class, 'batches__cells-total')]//h3[text()='${titulo}']/following-sibling::p[contains(@class, 'batches__cells-title')]`,
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null
+        ).singleNodeValue;
+        return elemento ? elemento.textContent.match(/\d+/g)?.join('') : '';
+      }
+
+      async function coletarDadosPutWall() {
+        const resultados = [];
+        try {
+          const response = await fetch('https://wms.adminml.com/reports/movements?&process_name=put_wall&limit=1000');
+          const html = await response.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const rows = doc.querySelectorAll('tbody > tr');
+          rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length < 9) return;
+            const destino = cells[6]?.innerText.trim();
+            const responsavel = cells[8]?.innerText.trim();
+            const dataCell = cells[7]?.innerText.trim();
+            const horario = dataCell.replace(/\n/g, ' ');
+            const wallcar = destino?.match(/PW-\d-\d{3}-(\d{3})-\d{2}-\d{2}/)?.[1] || "";
+            resultados.push({
+              Wallcar: wallcar,
+              Horario: horario,
+              REP: responsavel
+            });
+          });
+        } catch (error) {
+          console.error("Erro ao buscar ou processar os dados:", error);
+        }
+        return resultados;
+      }
+    } else {
+      ['Opção A', 'Opção B', 'Opção C'].forEach(opt => {
+        const item = document.createElement('div'); item.className = 'neumo-submenu-item';
+        item.textContent = opt; body.appendChild(item);
+      });
+      if (painelDiferimentos) {
+        painelDiferimentos.remove();
+        painelDiferimentos = null;
+        if(observerDiferimento) observerDiferimento.disconnect();
+        observerDiferimento = null;
+        dadosColetados = [];
+      }
+    }
+    btn.append(header, body);
+  }
+
+  function closePanel() {
+    if (!activeBtn) return;
+    activeBtn.classList.remove('expand');
+    activeBtn.innerHTML = activeBtn.dataset.name;
+    sectionsWrapper.querySelectorAll('.neumo-menu-item').forEach(b => {
+      b.classList.remove('fade-out');
+      b.style.transitionDelay = '0s';
+      b.style.opacity = '1';
+      b.style.transform = 'translateY(0)';
+    });
+    if (painelDiferimentos) {
+      painelDiferimentos.remove();
+      painelDiferimentos = null;
+      if(observerDiferimento) observerDiferimento.disconnect();
+      observerDiferimento = null;
+      dadosColetados = [];
+    }
+    activeBtn = null;
+  }
+
+  // ---- DIFERIMENTO ----
+  function criarPainelDiferimentosInterno() {
+    const painel = document.createElement('div');
+    painel.className = 'painel-diferimentos-interno';
+    // Mensagem centralizada
+    const msg = document.createElement('div');
+    msg.style.padding = '16px 0 10px';
+    msg.style.textAlign = 'center';
+    msg.style.color = '#222';
+    msg.style.fontSize = '14px';
+    msg.style.lineHeight = '19px';
+    msg.innerHTML = '<i>Passe o mouse sobre as barras do gráfico para coletar as informações de diferimento.</i>';
+    msg.className = 'msg-central';
+    painel.appendChild(msg);
+
+    // Status coleta
+    const status = document.createElement('div');
+    status.className = 'status-coleta';
+    status.innerHTML = '<span>Aguardando coleta de dados...</span>';
+    painel.appendChild(status);
+
+    // Botão copiar dados
+    const btnCopiar = document.createElement('button');
+    btnCopiar.className = 'copiar-btn';
+    btnCopiar.textContent = 'Copiar Dados';
+    btnCopiar.title = 'Copiar todos os dados em formato de tabela';
+    btnCopiar.addEventListener('click', copiarParaClipboard);
+    painel.appendChild(btnCopiar);
+
+    const conteudo = document.createElement('div');
+    conteudo.className = 'conteudo-diferimentos-interno';
+    painel.appendChild(conteudo);
+
+    return painel;
+  }
+
+  function copiarParaClipboard() {
+    let dadosFormatados = '';
+    dadosFormatados += 'Hora\tTotal Unidades\tData CPT\tUnidades CPT\n';
+    dadosColetados.forEach(dado => {
+      const totalUnidades = dado.cpts.reduce((sum, cpt) => sum + cpt.unidades, 0);
+      if (dado.cpts.length > 1) {
+        dadosFormatados += `${dado.hora}\t${totalUnidades}\t\t\n`;
+        dado.cpts.forEach(cpt => {
+          dadosFormatados += `\t\t${cpt.data}\t${cpt.unidades}\n`;
+        });
+      } else if (dado.cpts.length === 1) {
+        dadosFormatados += `${dado.hora}\t${totalUnidades}\t${dado.cpts[0].data}\t${dado.cpts[0].unidades}\n`;
+      }
+    });
+    if (typeof GM_setClipboard === "function") {
+      GM_setClipboard(dadosFormatados);
+    } else {
+      navigator.clipboard.writeText(dadosFormatados);
+    }
+    const btnCopiar = painelDiferimentos.querySelector('.copiar-btn');
+    const textoOriginal = btnCopiar.textContent;
+    btnCopiar.textContent = '✓ Copiado!';
+    btnCopiar.style.color = '#ffa726';
+    setTimeout(() => {
+      btnCopiar.textContent = textoOriginal;
+      btnCopiar.style.color = '#222';
+    }, 2000);
+  }
+
+  function atualizarPainelDiferimento() {
+    if (!painelDiferimentos || !painelConteudoDiferimento) return;
+    const status = painelDiferimentos.querySelector('.status-coleta');
+    const msg = painelDiferimentos.querySelector('.msg-central');
+    const btnCopiar = painelDiferimentos.querySelector('.copiar-btn');
+    painelConteudoDiferimento.innerHTML = '';
+    if (dadosColetados.length === 0) {
+      status.innerHTML = '<span>Aguardando coleta de dados...</span>';
+      status.style.display = 'block';
+      msg.style.display = 'block';
+      btnCopiar.classList.remove('visible');
+      painelConteudoDiferimento.innerHTML = '';
+      return;
+    }
+    status.innerHTML = `<span>${dadosColetados.length} horários coletados</span>`;
+    status.style.display = 'block';
+    msg.style.display = 'none';
+    btnCopiar.classList.add('visible');
+
+    const totalGeral = dadosColetados.reduce((total, dado) => {
+      return total + dado.cpts.reduce((sum, cpt) => sum + cpt.unidades, 0);
+    }, 0);
+    const resumo = document.createElement('div');
+    resumo.className = 'resumo';
+    resumo.innerHTML = `Total de Diferimentos: <span>${totalGeral.toLocaleString()} un</span>`;
+    painelConteudoDiferimento.appendChild(resumo);
+
+    const tabela = document.createElement('table');
+    tabela.innerHTML = `
+      <thead>
+        <tr>
+          <th>Hora</th>
+          <th>Total</th>
+          <th>CPTs</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = tabela.querySelector('tbody');
+    dadosColetados.forEach((dado, index) => {
+      const totalUnidades = dado.cpts.reduce((sum, cpt) => sum + cpt.unidades, 0);
+      const tr = document.createElement('tr');
+      const tdHora = document.createElement('td');
+      tdHora.textContent = dado.hora;
+      tdHora.style.fontWeight = '500';
+      const tdTotal = document.createElement('td');
+      tdTotal.textContent = `${totalUnidades} un`;
+      tdTotal.className = 'total';
+      const tdCPTs = document.createElement('td');
+      tdCPTs.style.fontSize = '12px';
+      dado.cpts.forEach(cpt => {
+        const div = document.createElement('div');
+        div.innerHTML = `<span style="font-weight:500">${cpt.data}</span>: ${cpt.unidades} un`;
+        tdCPTs.appendChild(div);
+      });
+      tr.appendChild(tdHora);
+      tr.appendChild(tdTotal);
+      tr.appendChild(tdCPTs);
+      tbody.appendChild(tr);
+    });
+    painelConteudoDiferimento.appendChild(tabela);
+  }
+
+  function extrairDadosTooltip(tooltip) {
+    try {
+      const horaElement = tooltip.querySelector('.tooltip-deferral-chart__title span:not(.tooltip-deferral-chart__title--bold)') ||
+        tooltip.querySelector('.tooltip-deferral-charttitle span:not(.tooltip-deferral-charttitle--bold)');
+      if (!horaElement) return null;
+      const hora = horaElement.textContent.trim();
+      const cptItems = tooltip.querySelectorAll('.tooltip-deferral-chart__cpt-list-section-item') ||
+        tooltip.querySelectorAll('.tooltip-deferral-chartcpt-list-section-item');
+      const cpts = [];
+      cptItems.forEach(item => {
+        const dataElement = item.querySelector('.tooltip-deferral-chart__cpt-list-section-item--decorate') ||
+          item.querySelector('.tooltip-deferral-chartcpt-list-section-item--decorate');
+        const unidadesElement = item.querySelector('.tooltip-deferral-chart__cpt-list-section-item--ligth') ||
+          item.querySelector('.tooltip-deferral-chartcpt-list-section-item--ligth');
+        if (dataElement && unidadesElement) {
+          const data = dataElement.textContent.trim();
+          const unidadesText = unidadesElement.textContent.trim();
+          const unidades = parseInt(unidadesText.replace(/[^\d]/g, ''));
+          cpts.push({ data, unidades });
+        }
+      });
+      return { hora, cpts };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function existeDadoSimilar(novoDado) {
+    return dadosColetados.some(dado => dado.hora === novoDado.hora);
+  }
+
+  function iniciarObservacaoDiferimento() {
+    if(observerDiferimento) observerDiferimento.disconnect();
+    observerDiferimento = null;
+    dadosColetados = [];
+    atualizarPainelDiferimento();
+
+    let tooltipsProcessados = new Set();
+    observerDiferimento = new MutationObserver(mutations => {
+      mutations.forEach(mutation => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+          const tooltip = mutation.target;
+          const opacity = parseFloat(tooltip.style.opacity);
+          if (opacity > 0) {
+            const dadosExtraidos = extrairDadosTooltip(tooltip);
+            if (dadosExtraidos && dadosExtraidos.cpts.length > 0) {
+              const horaChave = dadosExtraidos.hora;
+              if (!tooltipsProcessados.has(horaChave)) {
+                tooltipsProcessados.add(horaChave);
+                if (!existeDadoSimilar(dadosExtraidos)) {
+                  dadosColetados.push(dadosExtraidos);
+                  atualizarPainelDiferimento();
+                }
+              }
+            }
+          }
+        }
+      });
+    });
+    function observarTooltips() {
+      const tooltips = document.querySelectorAll('[class*="tooltip-deferral-chart"]');
+      if (tooltips.length > 0) {
+        tooltips.forEach(tooltip => {
+          observerDiferimento.observe(tooltip, { attributes: true });
+        });
+        atualizarPainelDiferimento();
+      } else {
+        setTimeout(observarTooltips, 1400);
+      }
+    }
+    setTimeout(observarTooltips, 1200);
+  }
+})();
